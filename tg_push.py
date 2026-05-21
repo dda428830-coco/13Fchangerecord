@@ -44,20 +44,23 @@ SITUATIONAL_AWARENESS_MIN_VALUE_CHANGE_USD = 1_000_000
 UNCHANGED_VALUE_DISPLAY_USD = 100_000_000
 
 TRACKED_MANAGERS = [
-    {"name": "Berkshire Hathaway", "short_name": "伯克希尔", "cik": "0001067983"},
-    {"name": "Bridgewater Associates", "short_name": "桥水", "cik": "0001350694"},
-    {"name": "Soros Fund Management", "short_name": "索罗斯", "cik": "0001029160"},
-    {"name": "Appaloosa", "short_name": "Appaloosa", "cik": "0001656456"},
-    {"name": "Situational Awareness LP", "short_name": "Situational Awareness", "cik": "0002045724"},
+    {"name": "Berkshire Hathaway", "short_name": "伯克希尔", "cik": "0001067983", "icon": "🟦"},
+    {"name": "Bridgewater Associates", "short_name": "桥水", "cik": "0001350694", "icon": "🟩"},
+    {"name": "Soros Fund Management", "short_name": "索罗斯", "cik": "0001029160", "icon": "🟨"},
+    {"name": "Appaloosa", "short_name": "Appaloosa", "cik": "0001656456", "icon": "🟥"},
+    {"name": "Situational Awareness LP", "short_name": "Situational Awareness", "cik": "0002045724", "icon": "🟪"},
 ]
 
 CUSIP_SYMBOLS = {
     "02079K107": "GOOG",
     "02079K305": "GOOGL",
+    "00215W100": "APG",
     "023135106": "AMZN",
     "025816109": "AXP",
     "037833100": "AAPL",
     "060505104": "BAC",
+    "11135F101": "AVTR",
+    "126408103": "CSX",
     "14040H105": "COF",
     "16119P108": "CHTR",
     "166764100": "CVX",
@@ -67,6 +70,8 @@ CUSIP_SYMBOLS = {
     "247361702": "DAL",
     "25754A201": "DPZ",
     "422806208": "HEI",
+    "457669307": "INTR",
+    "46434G764": "IUSB",
     "500754106": "KHC",
     "501044101": "KR",
     "526057104": "LEN",
@@ -74,17 +79,28 @@ CUSIP_SYMBOLS = {
     "530909308": "LLYVK",
     "531229755": "FWONK",
     "55616P104": "M",
+    "573874104": "MRVL",
     "57636Q104": "MA",
+    "594918104": "MSFT",
+    "595112103": "MU",
     "615369105": "MCO",
     "650111107": "NYT",
+    "67066G104": "NVDA",
     "670346105": "NUE",
     "674599105": "OXY",
+    "693718108": "PCVX",
     "73278L105": "POOL",
     "829933100": "SIRI",
+    "858119100": "STLD",
+    "871607107": "SNPS",
+    "874039100": "TSM",
+    "907818108": "UNP",
     "91324P102": "UNH",
+    "922908363": "VTI",
     "92826C839": "V",
     "G0403H108": "AON",
     "H1467J104": "CB",
+    "M87915274": "TEVA",
 }
 
 
@@ -412,11 +428,16 @@ def position_name(holding: dict[str, Any]) -> str:
     put_call = f" {holding['put_call']}" if holding.get("put_call") else ""
     if ticker:
         return f"{ticker}{put_call}"
-    return f"CUSIP {holding.get('cusip', 'N/A')}{put_call}"
+    return f"{holding.get('issuer', 'UNKNOWN')}{put_call}"
 
 
 def issuer_key(holding: dict[str, Any]) -> str:
-    return holding.get("ticker") or CUSIP_SYMBOLS.get(holding.get("cusip", "").upper()) or holding.get("cusip") or "UNKNOWN"
+    return (
+        holding.get("ticker")
+        or CUSIP_SYMBOLS.get(holding.get("cusip", "").upper())
+        or holding.get("issuer")
+        or "UNKNOWN"
+    )
 
 
 def weight(value_usd: int, new_total: int) -> str:
@@ -496,7 +517,9 @@ def build_manager_message(result: dict[str, Any]) -> str:
     old_total = result["old_total"]
     new_total = result["new_total"]
     lines = [
-        f"📊 **{manager['name']}** 持仓变化",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"{manager.get('icon', '📊')} **【{manager['name']}】**",
+        "📊 持仓变化",
         f"报告期：{filing.report_date} | 对比：{previous_filing.report_date}",
         f"总持仓：{money(old_total)} → {money(new_total)}（变化 {money(new_total - old_total, signed=True)}）",
         "",
