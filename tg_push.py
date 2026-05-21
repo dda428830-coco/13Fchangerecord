@@ -3,7 +3,7 @@
 Track 13F holding changes for selected institutional managers and push updates.
 
 Data source: SEC EDGAR submissions and 13F information table XML files.
-State storage: GitHub Gist when GITHUB_GIST_ID and GITHUB_TOKEN are configured.
+State storage: GitHub Gist when GIST_ID and GITHUB_TOKEN are configured.
 Push channel: Discord when DISCORD_WEBHOOK_URL is configured; Telegram is also supported.
 """
 
@@ -33,6 +33,10 @@ if hasattr(sys.stdout, "reconfigure"):
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_ARCHIVES = "https://www.sec.gov/Archives/edgar/data/{cik_no_zero}/{accession_no_dashless}/"
 GITHUB_GIST_API = "https://api.github.com/gists/{gist_id}"
+DEFAULT_SEC_USER_AGENT = (
+    "13Fchangerecord/1.0 "
+    "(https://github.com/dda428830-coco/13Fchangerecord; set SEC_USER_AGENT with contact email)"
+)
 STATE_FILE_NAME = "state.json"
 STATE_PATH = Path(os.getenv("STATE_PATH", "data/holdings_state.json"))
 MIN_VALUE_CHANGE_USD = 5_000_000
@@ -46,6 +50,42 @@ TRACKED_MANAGERS = [
     {"name": "Appaloosa", "short_name": "Appaloosa", "cik": "0001656456"},
     {"name": "Situational Awareness LP", "short_name": "Situational Awareness", "cik": "0002045724"},
 ]
+
+CUSIP_SYMBOLS = {
+    "02079K107": "GOOG",
+    "02079K305": "GOOGL",
+    "023135106": "AMZN",
+    "025816109": "AXP",
+    "037833100": "AAPL",
+    "060505104": "BAC",
+    "14040H105": "COF",
+    "16119P108": "CHTR",
+    "166764100": "CVX",
+    "191216100": "KO",
+    "21036P108": "STZ",
+    "23918K108": "DVA",
+    "247361702": "DAL",
+    "25754A201": "DPZ",
+    "422806208": "HEI",
+    "500754106": "KHC",
+    "501044101": "KR",
+    "526057104": "LEN",
+    "526057302": "LEN.B",
+    "530909308": "LLYVK",
+    "531229755": "FWONK",
+    "55616P104": "M",
+    "57636Q104": "MA",
+    "615369105": "MCO",
+    "650111107": "NYT",
+    "670346105": "NUE",
+    "674599105": "OXY",
+    "73278L105": "POOL",
+    "829933100": "SIRI",
+    "91324P102": "UNH",
+    "92826C839": "V",
+    "G0403H108": "AON",
+    "H1467J104": "CB",
+}
 
 
 @dataclass(frozen=True)
@@ -70,7 +110,12 @@ class Filing:
 
 
 def _user_agent() -> str:
-    return os.getenv("SEC_USER_AGENT", "13F holdings tracker contact@example.com")
+    return os.getenv("SEC_USER_AGENT") or DEFAULT_SEC_USER_AGENT
+
+
+def valid_sec_user_agent() -> bool:
+    user_agent = os.getenv("SEC_USER_AGENT", "").strip()
+    return bool(user_agent and "@" in user_agent and "example.com" not in user_agent and len(user_agent) >= 20)
 
 
 def fetch_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -82,8 +127,8 @@ def fetch_bytes(url: str, headers: dict[str, str] | None = None) -> bytes:
     parsed = urllib.parse.urlparse(url)
     req_headers = {
         "User-Agent": _user_agent(),
+        "Accept": "application/json, application/xml, text/xml, text/html, */*",
         "Accept-Encoding": "gzip, deflate",
-        "Host": parsed.netloc,
     }
     if headers:
         req_headers.update(headers)
@@ -141,7 +186,7 @@ def normalize_state(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_state() -> tuple[dict[str, Any], str]:
-    gist_id = os.getenv("GITHUB_GIST_ID")
+    gist_id = os.getenv("GIST_ID") or os.getenv("GITHUB_GIST_ID")
     token = os.getenv("GITHUB_TOKEN")
     if gist_id and token:
         try:
@@ -159,7 +204,7 @@ def load_state() -> tuple[dict[str, Any], str]:
 
 def save_state(state: dict[str, Any], source: str) -> None:
     if source == "gist":
-        gist_id = os.getenv("GITHUB_GIST_ID")
+        gist_id = os.getenv("GIST_ID") or os.getenv("GITHUB_GIST_ID")
         token = os.getenv("GITHUB_TOKEN")
         if gist_id and token:
             try:
@@ -363,16 +408,15 @@ def pct_change(old: int, delta: int) -> str:
 
 
 def position_name(holding: dict[str, Any]) -> str:
-    issuer = holding.get("issuer", "UNKNOWN")
-    ticker = holding.get("ticker")
+    ticker = holding.get("ticker") or CUSIP_SYMBOLS.get(holding.get("cusip", "").upper())
     put_call = f" {holding['put_call']}" if holding.get("put_call") else ""
     if ticker:
-        return f"{issuer}{put_call} ({ticker})"
-    return f"{issuer}{put_call} (CUSIP {holding.get('cusip', 'N/A')})"
+        return f"{ticker}{put_call}"
+    return f"CUSIP {holding.get('cusip', 'N/A')}{put_call}"
 
 
 def issuer_key(holding: dict[str, Any]) -> str:
-    return holding.get("ticker") or holding.get("issuer") or holding.get("cusip") or "UNKNOWN"
+    return holding.get("ticker") or CUSIP_SYMBOLS.get(holding.get("cusip", "").upper()) or holding.get("cusip") or "UNKNOWN"
 
 
 def weight(value_usd: int, new_total: int) -> str:
@@ -469,7 +513,7 @@ def build_manager_message(result: dict[str, Any]) -> str:
 def biggest_name(rows: list[dict[str, Any]]) -> str:
     if not rows:
         return "-"
-    return position_name(rows[0]).split(" (", 1)[0]
+    return position_name(rows[0])
 
 
 def build_quarterly_summary(report_date: str, results: list[dict[str, Any]]) -> str:
@@ -478,24 +522,27 @@ def build_quarterly_summary(report_date: str, results: list[dict[str, Any]]) -> 
         f"🗓 **{quarter_label(report_date)} 机构持仓季度汇总**",
         f"已收录：{len(included)}/{len(TRACKED_MANAGERS)} 家",
         "",
-        "| 机构 | 总仓位 | 环比变化 | 最大加仓 | 最大减仓 |",
-        "|------|--------|----------|----------|----------|",
     ]
     for result in included:
         manager = result["manager"]
         new_total = result["new_total"]
         delta = new_total - result["old_total"]
-        lines.append(
-            f"| {manager['short_name']} | {money(new_total)} | {money(delta, signed=True)} | "
-            f"{biggest_name(result['diff']['increased'])} | {biggest_name(result['diff']['decreased'])} |"
-        )
+        lines += [
+            f"**{manager['short_name']}**",
+            f"总仓位：{money(new_total)}（环比 {money(delta, signed=True)}）",
+            f"最大加仓：{biggest_name(result['diff']['increased'])}",
+            f"最大减仓：{biggest_name(result['diff']['decreased'])}",
+            "",
+        ]
 
     common_added = common_names(included, "added")
     common_removed = common_names(included, "removed")
     lines += [
+        "共同新增：",
+        format_common(common_added),
         "",
-        f"共同新增：{format_common(common_added)}",
-        f"共同清仓：{format_common(common_removed)}",
+        "共同清仓：",
+        format_common(common_removed),
     ]
     return "\n".join(lines)
 
@@ -511,14 +558,16 @@ def common_names(results: list[dict[str, Any]], bucket: str) -> list[str]:
                 continue
             seen.add(key)
             counts[key] = counts.get(key, 0) + 1
-            display[key] = position_name(holding).split(" (", 1)[0]
+            display[key] = position_name(holding)
     return [display[key] for key, count in sorted(counts.items()) if count >= 2]
 
 
 def format_common(names: list[str]) -> str:
     if not names:
         return "无"
-    return "、".join(names[:10])
+    shown = names[:8]
+    suffix = f"\n...还有 {len(names) - len(shown)} 个" if len(names) > len(shown) else ""
+    return "\n".join(f"- {name}" for name in shown) + suffix
 
 
 def send_discord(message: str) -> bool:
@@ -634,6 +683,19 @@ def run(preview: int | None = None, status_only: bool = False, dry_run: bool = F
     selected = TRACKED_MANAGERS[:preview] if preview else TRACKED_MANAGERS
     messages: list[str] = []
     results: list[dict[str, Any]] = []
+
+    if os.getenv("GITHUB_ACTIONS") == "true" and not valid_sec_user_agent():
+        message = (
+            "SEC_USER_AGENT is missing or invalid, so SEC EDGAR returned 403 Forbidden.\n"
+            "Please add a repo secret named SEC_USER_AGENT with a real contact email, for example:\n"
+            "13Fchangerecord dda428830-coco your-email@example.com"
+        )
+        if dry_run:
+            print(message)
+            print(f"[state] dry-run: state source was {state_source}; no state saved")
+        else:
+            send_message(message)
+        return 2
 
     for manager in selected:
         try:
