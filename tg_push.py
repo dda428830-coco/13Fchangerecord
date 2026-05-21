@@ -446,15 +446,46 @@ def weight(value_usd: int, new_total: int) -> str:
     return f"{value_usd / new_total * 100:.1f}%"
 
 
+def table_cell(text: str, width: int, align: str = "left") -> str:
+    value = str(text)
+    if len(value) > width:
+        value = value[: max(0, width - 1)] + "…"
+    if align == "right":
+        return value.rjust(width)
+    return value.ljust(width)
+
+
+def code_table(headers: list[tuple[str, int, str]], rows: list[list[str]]) -> list[str]:
+    header = "  ".join(table_cell(label, width, align) for label, width, align in headers)
+    divider = "  ".join("-" * width for _label, width, _align in headers)
+    lines = ["```", header, divider]
+    for row in rows:
+        lines.append(
+            "  ".join(
+                table_cell(value, width, align)
+                for value, (_label, width, align) in zip(row, headers)
+            )
+        )
+    lines.append("```")
+    return lines
+
+
 def format_added(title: str, rows: list[dict[str, Any]], new_total: int) -> list[str]:
     if not rows:
         return []
     lines = [f"{title}（{len(rows)}支）"]
-    for holding in rows[:10]:
-        lines.append(
-            f"- {position_name(holding)}：{holding.get('shares', 0):,} 股 | "
-            f"{money(holding.get('value_usd', 0))} | 占新总仓 {weight(holding.get('value_usd', 0), new_total)}"
-        )
+    table_rows = [
+        [
+            position_name(holding),
+            money(holding.get("value_usd", 0)),
+            weight(holding.get("value_usd", 0), new_total),
+        ]
+        for holding in rows[:10]
+    ]
+    lines += code_table(
+        [("Ticker", 10, "left"), ("Value", 9, "right"), ("Weight", 7, "right")],
+        table_rows,
+    )
     if len(rows) > 10:
         lines.append(f"- ...还有 {len(rows) - 10} 支")
     return lines
@@ -464,11 +495,11 @@ def format_removed(title: str, rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return []
     lines = [f"{title}（{len(rows)}支）"]
-    for holding in rows[:10]:
-        lines.append(
-            f"- {position_name(holding)}：{holding.get('shares', 0):,} 股 | "
-            f"{money(holding.get('value_usd', 0))}"
-        )
+    table_rows = [[position_name(holding), money(holding.get("value_usd", 0))] for holding in rows[:10]]
+    lines += code_table(
+        [("Ticker", 10, "left"), ("Value", 9, "right")],
+        table_rows,
+    )
     if len(rows) > 10:
         lines.append(f"- ...还有 {len(rows) - 10} 支")
     return lines
@@ -478,12 +509,18 @@ def format_changed(title: str, rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return []
     lines = [f"{title}（{len(rows)}支，按变化市值排序）"]
-    for holding in rows[:10]:
-        lines.append(
-            f"- {position_name(holding)}：{signed_int(holding['share_delta'])} 股 "
-            f"({pct_change(holding.get('old_shares', 0), holding['share_delta'])}) | "
-            f"市值变化 {money(holding['value_delta_usd'], signed=True)}"
-        )
+    table_rows = [
+        [
+            position_name(holding),
+            pct_change(holding.get("old_shares", 0), holding["share_delta"]),
+            money(holding["value_delta_usd"], signed=True),
+        ]
+        for holding in rows[:10]
+    ]
+    lines += code_table(
+        [("Ticker", 10, "left"), ("Pct", 8, "right"), ("Value", 10, "right")],
+        table_rows,
+    )
     if len(rows) > 10:
         lines.append(f"- ...还有 {len(rows) - 10} 支")
     return lines
@@ -493,11 +530,17 @@ def format_unchanged(rows: list[dict[str, Any]]) -> list[str]:
     if not rows:
         return []
     lines = [f"⚪ 股数不变（{len(rows)}支，市值变化 > $100M）"]
-    for holding in rows[:10]:
-        lines.append(
-            f"- {position_name(holding)}：{holding.get('shares', 0):,} 股 | "
-            f"市值变化 {money(holding['value_delta_usd'], signed=True)}"
-        )
+    table_rows = [
+        [
+            position_name(holding),
+            money(holding["value_delta_usd"], signed=True),
+        ]
+        for holding in rows[:10]
+    ]
+    lines += code_table(
+        [("Ticker", 10, "left"), ("Value", 10, "right")],
+        table_rows,
+    )
     if len(rows) > 10:
         lines.append(f"- ...还有 {len(rows) - 10} 支")
     return lines
