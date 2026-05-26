@@ -3,7 +3,7 @@ name: 13F Holdings Tracker
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 */6 * * 1-5"
+    - cron: "17 13 1 * *"
 
 permissions:
   contents: write
@@ -21,7 +21,7 @@ jobs:
       - name: Run tracker
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          GITHUB_GIST_ID: ${{ secrets.GITHUB_GIST_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
           GITHUB_TOKEN: ${{ github.token }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
